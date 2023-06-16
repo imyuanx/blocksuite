@@ -1,19 +1,16 @@
-import type {
-  DefaultPageBlockComponent,
-  EdgelessPageBlockComponent,
-} from '@blocksuite/blocks';
 import {
   type AbstractEditor,
   activeEditorManager,
+  type DefaultPageBlockComponent,
+  type EdgelessPageBlockComponent,
   edgelessPreset,
+  getPageBlock,
+  getServiceOrRegister,
   type PageBlockModel,
   pagePreset,
-} from '@blocksuite/blocks';
-import {
-  getDefaultPageBlock,
-  getServiceOrRegister,
   ThemeObserver,
 } from '@blocksuite/blocks';
+import { ContentParser } from '@blocksuite/blocks/content-parser';
 import {
   BlockSuiteRoot,
   ShadowlessElement,
@@ -89,8 +86,7 @@ export class EditorContainer
       if (!pageModel) return;
 
       if (this.mode === 'page') {
-        const pageBlock = getDefaultPageBlock(pageModel);
-        pageBlock.selection.clear();
+        getPageBlock(pageModel)?.selection.clear();
       }
 
       const selection = getSelection();
@@ -167,6 +163,9 @@ export class EditorContainer
   override updated(changedProperties: Map<string, unknown>) {
     if (changedProperties.has('mode')) {
       this.slots.pageModeSwitched.emit(this.mode);
+      if (this.mode === 'page') {
+        this._saveViewportLocalRecord();
+      }
     }
 
     if (!changedProperties.has('page') && !changedProperties.has('mode')) {
@@ -189,6 +188,21 @@ export class EditorContainer
       await new Promise(res => this.page.slots.rootAdded.once(res));
     }
     return createBlockHub(this, this.page);
+  }
+
+  private _saveViewportLocalRecord() {
+    const edgelessPage = this.querySelector('affine-edgeless-page');
+    if (edgelessPage) {
+      const { viewport } = edgelessPage.surface;
+      localStorage.setItem(
+        'blocksuite:' + this.page.id + ':edgelessViewport',
+        JSON.stringify({ ...viewport.center, zoom: viewport.zoom })
+      );
+    }
+  }
+
+  createContentParser() {
+    return new ContentParser(this.page);
   }
 
   override render() {
@@ -219,6 +233,12 @@ export class EditorContainer
           overflow: hidden;
           font-family: var(--affine-font-family);
           background: var(--affine-background-primary-color);
+        }
+        @media print {
+          editor-container,
+          .affine-editor-container {
+            height: auto;
+          }
         }
       </style>
       ${rootContainer} ${remoteSelectionContainer}

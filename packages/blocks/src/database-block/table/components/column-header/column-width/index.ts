@@ -1,5 +1,6 @@
 import { assertExists, DisposableGroup } from '@blocksuite/global/utils';
 
+import type { DatabaseViewDataMap } from '../../../../common/view-manager.js';
 import type { DatabaseBlockModel } from '../../../../database-model.js';
 import {
   DEFAULT_ADD_BUTTON_WIDTH,
@@ -18,6 +19,7 @@ type ColumnWidthConfig = {
 };
 
 export function initChangeColumnWidthHandlers(
+  view: DatabaseViewDataMap['table'],
   headerContainer: HTMLElement,
   tableContainer: HTMLElement,
   targetModel: DatabaseBlockModel,
@@ -26,6 +28,8 @@ export function initChangeColumnWidthHandlers(
   let changeColumnWidthConfig: ColumnWidthConfig | null = null;
 
   const onColumnWidthPointerdown = (event: PointerEvent, index: number) => {
+    event.stopPropagation();
+
     // all rows cell in current column
     const currentColumnCells = Array.from(
       tableContainer.querySelectorAll<HTMLElement>(
@@ -54,6 +58,7 @@ export function initChangeColumnWidthHandlers(
   };
 
   const onColumnWidthPointermove = (event: PointerEvent) => {
+    event.stopPropagation();
     if (!changeColumnWidthConfig) return;
 
     const {
@@ -135,6 +140,8 @@ export function initChangeColumnWidthHandlers(
   };
 
   const onColumnWidthPointerup = (event: PointerEvent) => {
+    event.stopPropagation();
+
     changeActiveColumnIndex(-1);
     if (!changeColumnWidthConfig) return;
     const { rafId, index, rowCells } = changeColumnWidthConfig;
@@ -148,13 +155,15 @@ export function initChangeColumnWidthHandlers(
         titleColumnWidth: columnWidth,
       });
     } else {
-      const columnId = targetModel.columns[index - 1].id;
-      const columnProps = targetModel.getColumn(columnId);
-      targetModel.updateColumn({
-        ...columnProps,
-        width: columnWidth,
+      const columnId = view.columns[index - 1].id;
+      targetModel.updateView(view.id, 'table', data => {
+        data.columns.forEach(v => {
+          if (v.id === columnId) {
+            v.width = columnWidth;
+          }
+        });
       });
-      targetModel.applyColumnUpdate();
+      targetModel.applyViewsUpdate();
     }
   };
 

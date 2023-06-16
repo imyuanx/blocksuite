@@ -3,12 +3,13 @@ import './connector-menu.js';
 
 import { ConnectorIcon } from '@blocksuite/global/config';
 import { ConnectorMode } from '@blocksuite/phasor';
-import { createPopper } from '@popperjs/core';
+import { assertExists } from '@blocksuite/store';
+import { computePosition, offset } from '@floating-ui/dom';
 import { css, html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
 import type { MouseMode } from '../../../../__internal__/index.js';
-import { DEFAULT_SELECTED_COLOR } from '../../components/color-panel.js';
+import { GET_DEFAULT_LINE_COLOR } from '../../components/color-panel.js';
 import type { EdgelessPageBlockComponent } from '../../edgeless-page-block.js';
 import type { EdgelessConnectorMenu } from './connector-menu.js';
 
@@ -21,24 +22,26 @@ function createConnectorMenuPopper(
   reference: HTMLElement
 ): ConnectorMenuPopper {
   const menu = document.createElement('edgeless-connector-menu');
-  document.body.appendChild(menu);
-  const popper = createPopper(reference, menu, {
+  assertExists(reference.shadowRoot);
+  reference.shadowRoot.appendChild(menu);
+  computePosition(reference, menu, {
     placement: 'top',
-    modifiers: [
-      {
-        name: 'offset',
-        options: {
-          offset: [0, 12],
-        },
-      },
+    middleware: [
+      offset({
+        mainAxis: 10,
+      }),
     ],
+  }).then(({ x, y }) => {
+    Object.assign(menu.style, {
+      left: `${x}px`,
+      top: `${y}px`,
+    });
   });
 
   return {
     element: menu,
     dispose: () => {
       menu.remove();
-      popper.destroy();
     },
   };
 }
@@ -57,6 +60,9 @@ export class EdgelessConnectorToolButton extends LitElement {
   @property()
   edgeless!: EdgelessPageBlockComponent;
 
+  @property()
+  setMouseMode!: (mouseMode: MouseMode) => void;
+
   private _menu: ConnectorMenuPopper | null = null;
 
   private _toggleMenu() {
@@ -68,16 +74,6 @@ export class EdgelessConnectorToolButton extends LitElement {
       this._menu.element.mouseMode = this.mouseMode;
       this._menu.element.edgeless = this.edgeless;
     }
-  }
-
-  private _trySetConnectorMode() {
-    if (this.mouseMode.type === 'connector') return;
-
-    this.edgeless.slots.mouseModeUpdated.emit({
-      type: 'connector',
-      mode: ConnectorMode.Orthogonal,
-      color: DEFAULT_SELECTED_COLOR,
-    });
   }
 
   override updated(changedProperties: Map<string, unknown>) {
@@ -107,7 +103,11 @@ export class EdgelessConnectorToolButton extends LitElement {
         .tooltip=${'Connector'}
         .active=${type === 'connector'}
         @click=${() => {
-          this._trySetConnectorMode();
+          this.setMouseMode({
+            type: 'connector',
+            mode: ConnectorMode.Orthogonal,
+            color: GET_DEFAULT_LINE_COLOR(),
+          });
           this._toggleMenu();
         }}
       >

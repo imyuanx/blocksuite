@@ -1,17 +1,17 @@
 import { SCROLL_THRESHOLD } from '@blocksuite/global/config';
-import type { Page, UserRange } from '@blocksuite/store';
+import type { PointerEventState } from '@blocksuite/lit';
+import { matchFlavours, type Page, type UserRange } from '@blocksuite/store';
 
-import type { BlockComponentElement } from '../../../__internal__/index.js';
+import type {
+  BlockComponentElement,
+  IPoint,
+} from '../../../__internal__/index.js';
 import {
   contains,
   getBlockElementsExcludeSubtrees,
   getRectByBlockElement,
 } from '../../../__internal__/index.js';
 import { getExtendBlockRange } from '../../../__internal__/utils/block-range.js';
-import type {
-  IPoint,
-  SelectionEvent,
-} from '../../../__internal__/utils/gesture/index.js';
 import type { DefaultSelectionSlots } from '../default-page-block.js';
 import type { DefaultSelectionManager, PageSelectionState } from './index.js';
 
@@ -20,10 +20,19 @@ const threshold = SCROLL_THRESHOLD / 2;
 
 function intersects(a: DOMRect, b: DOMRect, offset: IPoint) {
   return (
-    a.left + offset.x <= b.right &&
-    a.right + offset.x >= b.left &&
-    a.top + offset.y <= b.bottom &&
-    a.bottom + offset.y >= b.top
+    a.left + offset.x < b.right &&
+    a.right + offset.x > b.left &&
+    a.top + offset.y < b.bottom &&
+    a.bottom + offset.y > b.top
+  );
+}
+
+function insides(a: DOMRect, b: DOMRect, offset: IPoint) {
+  return (
+    a.left + offset.x > b.left &&
+    a.right + offset.x < b.right &&
+    a.top + offset.y > b.top &&
+    a.bottom + offset.y < b.bottom
   );
 }
 
@@ -51,16 +60,27 @@ export function filterBlocksExcludeSubtrees(
     if (intersects(rect, bound, offset)) {
       if (prevIndex === -1) {
         prevIndex = i;
+        if (insides(bound, rect, offset)) {
+          const prevBlock = entries[prevIndex][0];
+          // inside database block
+          if (matchFlavours(prevBlock.model, ['affine:database'])) {
+            continue;
+          }
+        }
       } else {
         let prevBlock = entries[prevIndex][0];
         // prev block before and contains block
         if (contains(prevBlock, block)) {
-          // not continuous block
-          if (results.length > 1) {
+          if (matchFlavours(prevBlock.model, ['affine:database'])) {
             continue;
+          } else {
+            // not continuous block
+            if (results.length > 1) {
+              continue;
+            }
+            prevIndex = i;
+            results.shift();
           }
-          prevIndex = i;
-          results.shift();
         } else {
           // backward search parent block and remove its subtree
           // only keep blocks of same level
@@ -172,11 +192,11 @@ export interface AutoScrollHooks {
 
 export function autoScroll(
   selection: DefaultSelectionManager,
-  e: SelectionEvent,
+  e: PointerEventState,
   hooks: AutoScrollHooks
 ) {
   const { state } = selection;
-  const { y } = e;
+  const { y } = e.point;
 
   const { viewportElement } = selection;
   const { viewport } = state;

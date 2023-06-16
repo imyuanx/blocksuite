@@ -1,4 +1,4 @@
-import { DualLinkIcon, PageIcon } from '@blocksuite/global/config';
+import { DualLinkIcon, ImportIcon, PageIcon } from '@blocksuite/global/config';
 import { WithDisposable } from '@blocksuite/lit';
 import {
   assertExists,
@@ -9,6 +9,7 @@ import { html, LitElement } from 'lit';
 import { customElement, query, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
+import { createPage } from '../../__internal__/index.js';
 import { REFERENCE_NODE } from '../../__internal__/rich-text/reference-node.js';
 import type { AffineVEditor } from '../../__internal__/rich-text/virgo/types.js';
 import {
@@ -16,6 +17,7 @@ import {
   getVirgoByModel,
 } from '../../__internal__/utils/query.js';
 import { isFuzzyMatch } from '../../__internal__/utils/std.js';
+import { showImportModal } from '../import-page/index.js';
 import { createKeydownObserver } from '../utils.js';
 import { styles } from './styles.js';
 
@@ -68,9 +70,9 @@ export class LinkedPagePopover extends WithDisposable(LitElement) {
     const displayPageName =
       pageName.slice(0, DISPLAY_LENGTH) +
       (pageName.length > DISPLAY_LENGTH ? '..' : '');
-    const filteredPageList = this._pageList.filter(({ title }) =>
-      isFuzzyMatch(title, this._query)
-    );
+    const filteredPageList = this._pageList
+      .filter(({ id }) => id !== this._page.id)
+      .filter(({ title }) => isFuzzyMatch(title, this._query));
 
     return [
       ...filteredPageList.map((page, idx) => ({
@@ -80,7 +82,8 @@ export class LinkedPagePopover extends WithDisposable(LitElement) {
         icon: PageIcon,
         action: () => this._insertLinkedNode('LinkedPage', page.id),
       })),
-      // The active condition is a bit tricky here
+
+      // XXX The active condition is a bit tricky here
       {
         key: 'create-linked-page',
         name: `Create "${displayPageName}" page`,
@@ -95,6 +98,13 @@ export class LinkedPagePopover extends WithDisposable(LitElement) {
       //   icon: NewPageIcon,
       //   action: () => this._createSubpage(),
       // },
+      {
+        key: 'import-linked-page',
+        name: `Import`,
+        active: filteredPageList.length + 1 === this._activatedItemIndex,
+        icon: ImportIcon,
+        action: () => this._importPage(),
+      },
     ];
   }
 
@@ -133,7 +143,7 @@ export class LinkedPagePopover extends WithDisposable(LitElement) {
         const item = this._actionList[this._activatedItemIndex];
         if (
           item.key === 'create-linked-page' ||
-          item.key === 'create-subpage'
+          item.key === 'import-linked-page'
         ) {
           return;
         }
@@ -191,15 +201,28 @@ export class LinkedPagePopover extends WithDisposable(LitElement) {
     });
   }
 
-  private _createPage() {
+  private async _createPage() {
     const pageName = this._query;
-    const page = this._page.workspace.createPage({
-      init: {
-        title: pageName,
-      },
-    });
+
+    const page = await createPage(this._page.workspace, { title: pageName });
 
     this._insertLinkedNode('LinkedPage', page.id);
+  }
+
+  private _importPage() {
+    this.abortController.abort();
+    const onSuccess = (pageIds: string[]) => {
+      if (pageIds.length === 0) {
+        return;
+      }
+      const pageId = pageIds[0];
+      this._insertLinkedNode('LinkedPage', pageId);
+    };
+    showImportModal({
+      workspace: this._page.workspace,
+      multiple: false,
+      onSuccess,
+    });
   }
 
   // private _createSubpage() {
@@ -224,7 +247,7 @@ export class LinkedPagePopover extends WithDisposable(LitElement) {
           visibility: 'hidden',
         });
 
-    const pageList = this._actionList.slice(0, -1).map(
+    const pageList = this._actionList.slice(0, -2).map(
       ({ key, name, action, active, icon }, index) => html`<icon-button
         width="280px"
         height="32px"
@@ -240,7 +263,7 @@ export class LinkedPagePopover extends WithDisposable(LitElement) {
       >`
     );
 
-    const createList = this._actionList.slice(-1).map(
+    const createList = this._actionList.slice(-2).map(
       ({ key, name, action, active, icon }, index) => html`<icon-button
         width="280px"
         height="32px"
@@ -250,7 +273,7 @@ export class LinkedPagePopover extends WithDisposable(LitElement) {
         @click=${action}
         @mousemove=${() => {
           // Use `mousemove` instead of `mouseover` to avoid navigate conflict with keyboard
-          this._activatedItemIndex = this._actionList.length - 1 + index;
+          this._activatedItemIndex = this._actionList.length + index;
         }}
         >${icon}</icon-button
       >`

@@ -1,5 +1,6 @@
 import type { RoughCanvas } from 'roughjs/bin/canvas.js';
 
+import { DEFAULT_ROUGHNESS } from '../../consts.js';
 import { type HitTestOptions, SurfaceElement } from '../surface-element.js';
 import { ShapeMethodsMap } from './shapes/index.js';
 import type { IShape } from './types.js';
@@ -40,12 +41,18 @@ export class ShapeElement extends SurfaceElement<IShape> {
     return strokeStyle;
   }
 
+  get roughness() {
+    const roughness =
+      (this.yMap.get('roughness') as IShape['roughness']) ?? DEFAULT_ROUGHNESS;
+    return roughness;
+  }
+
   get realStrokeColor() {
-    return this.transformPropertyValue(this.strokeColor);
+    return this.computedValue(this.strokeColor);
   }
 
   get realFillColor() {
-    return this.transformPropertyValue(this.fillColor);
+    return this.computedValue(this.fillColor);
   }
 
   override hitTest(x: number, y: number, options?: HitTestOptions) {

@@ -3,6 +3,7 @@ import {
   DatabaseTableViewIcon,
   SHORT_KEY,
 } from '@blocksuite/global/config';
+import { type BaseBlockModel, matchFlavours } from '@blocksuite/store';
 import { assertExists, type Page } from '@blocksuite/store';
 
 import { copyBlocks } from '../../__internal__/clipboard/utils/commons.js';
@@ -42,10 +43,16 @@ export const actionConfig = [
     id: 'convert-to-database',
     name: 'Group as Database',
     disabledToolTip:
-      'Contains Block types that cannot be converted to Database. Learn more',
+      'Contains Block types that cannot be converted to Database',
     icon: DatabaseTableViewIcon,
     hotkey: `${SHORT_KEY}+g`,
-    showWhen: (page: Page) => {
+    showWhen: (page: Page, models: BaseBlockModel[]) => {
+      if (
+        models.length === 1 &&
+        matchFlavours(models[0], ['affine:database'])
+      ) {
+        return false;
+      }
       const range = getCurrentBlockRange(page);
       const isShow = range?.type === 'Block';
       return isShow;

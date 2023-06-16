@@ -1,9 +1,9 @@
 import { caretRangeFromPoint } from '@blocksuite/global/utils';
+import type { PointerEventState } from '@blocksuite/lit';
 
 import type {
   BlockComponentElement,
   IPoint,
-  SelectionEvent,
 } from '../../../__internal__/index.js';
 import {
   getBlockElementsByElement,
@@ -11,8 +11,7 @@ import {
   Point,
   resetNativeSelection,
 } from '../../../__internal__/index.js';
-import type { RichText } from '../../../__internal__/rich-text/rich-text.js';
-import type { EmbedBlockComponent } from '../../../embed-block/index.js';
+import type { EmbedBlockComponent } from '../../../embed-block/embed-block.js';
 
 export type PageSelectionType =
   | 'native'
@@ -34,6 +33,7 @@ export interface PageViewport {
 }
 
 export class PageSelectionState {
+  // TODO add readonly
   type: PageSelectionType;
   viewport: PageViewport = {
     left: 0,
@@ -46,16 +46,23 @@ export class PageSelectionState {
   };
 
   draggingArea: { start: Point; end: Point } | null = null;
-  selectedEmbeds: EmbedBlockComponent[] = [];
+  /**
+   * @deprecated TODO merge to `selectedBlocks` or `_activeComponent`
+   */
+  get selectedEmbed() {
+    if (this.type === 'embed') {
+      return this._activeComponent as EmbedBlockComponent;
+    }
+    return null;
+  }
+
   selectedBlocks: BlockComponentElement[] = [];
   // null: SELECT_ALL
   focusedBlock: BlockComponentElement | null = null;
   rafID?: number;
   lastPoint: Point | null = null;
   private _startRange: Range | null = null;
-  private _richTextCache = new Map<RichText, DOMRect>();
   private _blockCache = new Map<BlockComponentElement, DOMRect>();
-  private _embedCache = new Map<EmbedBlockComponent, DOMRect>();
   private _activeComponent: BlockComponentElement | null = null;
 
   constructor(type: PageSelectionType) {
@@ -74,16 +81,8 @@ export class PageSelectionState {
     return this._startRange;
   }
 
-  get richTextCache() {
-    return this._richTextCache;
-  }
-
   get blockCache() {
     return this._blockCache;
-  }
-
-  get embedCache() {
-    return this._embedCache;
   }
 
   get viewportOffset(): IPoint {
@@ -96,7 +95,7 @@ export class PageSelectionState {
     };
   }
 
-  resetStartRange(e: SelectionEvent) {
+  resetStartRange(e: PointerEventState) {
     const { clientX, clientY } = e.raw;
     this._startRange = caretRangeFromPoint(clientX, clientY);
     // Save the last coordinates so that we can send them when scrolling through the wheel
@@ -104,14 +103,14 @@ export class PageSelectionState {
   }
 
   resetDraggingArea(
-    e: SelectionEvent,
+    e: PointerEventState,
     offset: { scrollLeft: number; scrollTop: number } = {
       scrollLeft: 0,
       scrollTop: 0,
     }
   ) {
     const { scrollLeft, scrollTop } = offset;
-    let { x, y } = e;
+    let { x, y } = e.point;
     x += scrollLeft;
     y += scrollTop;
     const end = new Point(x, y);
@@ -157,7 +156,6 @@ export class PageSelectionState {
   clearNativeSelection() {
     this.clearRaf();
     this.type = 'none';
-    this._richTextCache.clear();
     this._startRange = null;
     this.lastPoint = null;
     resetNativeSelection(null);
@@ -173,7 +171,6 @@ export class PageSelectionState {
 
   clearEmbedSelection() {
     this.type = 'none';
-    this.selectedEmbeds = [];
     this._activeComponent = null;
   }
 

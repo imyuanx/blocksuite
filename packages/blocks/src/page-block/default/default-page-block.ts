@@ -1,11 +1,17 @@
 /// <reference types="vite/client" />
 import {
   BLOCK_ID_ATTR,
+  PAGE_BLOCK_CHILD_PADDING,
   PAGE_BLOCK_PADDING_BOTTOM,
 } from '@blocksuite/global/config';
 import { assertExists } from '@blocksuite/global/utils';
 import { BlockElement } from '@blocksuite/lit';
-import { type BaseBlockModel, Slot, Utils } from '@blocksuite/store';
+import {
+  type BaseBlockModel,
+  matchFlavours,
+  Slot,
+  Utils,
+} from '@blocksuite/store';
 import { VEditor } from '@blocksuite/virgo';
 import { css, html } from 'lit';
 import { customElement, query, state } from 'lit/decorators.js';
@@ -29,11 +35,7 @@ import { PageBlockService } from '../index.js';
 import type { PageBlockModel } from '../page-model.js';
 import { bindHotkeys, removeHotkeys } from '../utils/bind-hotkey.js';
 import { tryUpdateFrameSize } from '../utils/index.js';
-import {
-  DraggingArea,
-  EmbedEditingContainer,
-  EmbedSelectedRectsContainer,
-} from './components.js';
+import { DraggingArea, EmbedSelectedRectsContainer } from './components.js';
 import { DefaultSelectionManager } from './selection-manager/index.js';
 import { createDragHandle, getAllowSelectedBlocks } from './utils.js';
 
@@ -73,8 +75,8 @@ export class DefaultPageBlockComponent
       padding-bottom: ${PAGE_BLOCK_PADDING_BOTTOM}px;
 
       /* Leave a place for drag-handle */
-      padding-left: 24px;
-      padding-right: 24px;
+      padding-left: ${PAGE_BLOCK_CHILD_PADDING}px;
+      padding-right: ${PAGE_BLOCK_CHILD_PADDING}px;
     }
 
     .affine-default-page-block-title {
@@ -158,10 +160,6 @@ export class DefaultPageBlockComponent
     selectedRectsUpdated: new Slot<DOMRect[]>(),
     embedRectsUpdated: new Slot<DOMRect[]>(),
     embedEditingStateUpdated: new Slot<EditingState | null>(),
-    nativeSelectionToggled: new Slot<boolean>(),
-
-    subpageLinked: new Slot<{ pageId: string }>(),
-    subpageUnlinked: new Slot<{ pageId: string }>(),
     pageLinkClicked: new Slot<{ pageId: string; blockId?: string }>(),
   };
 
@@ -247,9 +245,11 @@ export class DefaultPageBlockComponent
       return;
     } else if (e.key === 'ArrowDown' && hasContent) {
       e.preventDefault();
-      const firstParagraph = model.children[0].children[0];
-      if (firstParagraph) {
-        asyncFocusRichText(page, firstParagraph.id);
+      const firstText = defaultFrame?.children.find(block =>
+        matchFlavours(block, ['affine:paragraph', 'affine:list', 'affine:code'])
+      );
+      if (firstText) {
+        asyncFocusRichText(page, firstText.id);
       } else {
         const newFirstParagraphId = page.addBlock(
           'affine:paragraph',
@@ -507,6 +507,7 @@ export class DefaultPageBlockComponent
       mouseRoot: this.mouseRoot,
       slots: this.slots,
       container: this,
+      dispatcher: this.root.uiEventDispatcher,
     });
   }
 
@@ -532,17 +533,12 @@ export class DefaultPageBlockComponent
       this.selection.refreshRemoteSelection();
     });
 
-    const { page, selection } = this;
+    const { selection } = this;
     const { viewportOffset } = selection.state;
 
     const draggingArea = DraggingArea(this._draggingArea);
     const selectedEmbedContainer = EmbedSelectedRectsContainer(
       this._selectedEmbedRects,
-      viewportOffset
-    );
-    const embedEditingContainer = EmbedEditingContainer(
-      page.readonly ? null : this._embedEditingState,
-      this.slots,
       viewportOffset
     );
     const isEmpty =
@@ -573,7 +569,7 @@ export class DefaultPageBlockComponent
           }}"
           .offset="${viewportOffset}"
         ></affine-selected-blocks>
-        ${draggingArea} ${selectedEmbedContainer} ${embedEditingContainer}
+        ${draggingArea} ${selectedEmbedContainer}
       </div>
     `;
   }

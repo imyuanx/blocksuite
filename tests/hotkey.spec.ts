@@ -17,6 +17,7 @@ import {
   pressArrowRight,
   pressArrowUp,
   pressEnter,
+  pressForwardDelete,
   readClipboardText,
   redoByClick,
   redoByKeyboard,
@@ -139,6 +140,7 @@ test('multi line rich-text inline code hotkey', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text={
@@ -190,6 +192,7 @@ test('multi line rich-text inline code hotkey', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text="123"
@@ -214,6 +217,7 @@ test('multi line rich-text inline code hotkey', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text={
@@ -303,6 +307,7 @@ test('use formatted cursor with hotkey', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text={
@@ -343,6 +348,7 @@ test('use formatted cursor with hotkey', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text={
@@ -387,6 +393,7 @@ test('use formatted cursor with hotkey', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text={
@@ -431,6 +438,7 @@ test('use formatted cursor with hotkey', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text={
@@ -490,6 +498,7 @@ test('should single line format hotkey work', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text={
@@ -531,6 +540,7 @@ test('should single line format hotkey work', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text="hello"
@@ -565,6 +575,7 @@ test('should multiple line format hotkey work', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text={
@@ -634,6 +645,7 @@ test('should multiple line format hotkey work', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text="123"
@@ -667,6 +679,7 @@ test('should hotkey work in paragraph', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text="hello"
@@ -681,6 +694,7 @@ test('should hotkey work in paragraph', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text="hello"
@@ -696,6 +710,7 @@ test('should hotkey work in paragraph', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:list
     prop:checked={false}
@@ -712,6 +727,7 @@ test('should hotkey work in paragraph', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:list
     prop:checked={false}
@@ -727,6 +743,7 @@ test('should hotkey work in paragraph', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text="hello"
@@ -742,6 +759,7 @@ test('should hotkey work in paragraph', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text="hello"
@@ -786,6 +804,7 @@ test('should cut work single line', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text="ho"
@@ -802,6 +821,7 @@ test('should cut work single line', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text="hello"
@@ -827,6 +847,7 @@ test.skip('should cut work multiple line', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text="19"
@@ -843,6 +864,7 @@ test.skip('should cut work multiple line', async ({ page }) => {
     `
 <affine:frame
   prop:background="--affine-background-secondary-color"
+  prop:index="a0"
 >
   <affine:paragraph
     prop:text="123"
@@ -1035,4 +1057,48 @@ test('should support ctrl/cmd+g convert to database', async ({ page }) => {
   await expect(database).toBeVisible();
   const rows = page.locator('.affine-database-block-row');
   expect(await rows.count()).toBe(3);
+});
+
+test('should forwardDelete works when delete single character', async ({
+  page,
+}) => {
+  await enterPlaygroundRoom(page);
+  await initEmptyParagraphState(page);
+  await focusRichText(page, 0);
+  await type(page, 'hello');
+  await pressArrowLeft(page, 5);
+  await pressForwardDelete(page);
+  await assertRichTexts(page, ['ello']);
+});
+
+test('should forwardDelete works when delete multi characters', async ({
+  page,
+}) => {
+  test.info().annotations.push({
+    type: 'issue',
+    description: 'https://github.com/toeverything/blocksuite/issues/3122',
+  });
+  await enterPlaygroundRoom(page);
+  await initEmptyParagraphState(page);
+  await focusRichText(page, 0);
+  await type(page, 'hello');
+  await pressArrowLeft(page, 5);
+  await setVirgoSelection(page, 1, 3);
+  await pressForwardDelete(page);
+  await assertRichTexts(page, ['ho']);
+});
+
+test('should drag multiple block and input text works', async ({ page }) => {
+  test.info().annotations.push({
+    type: 'issue',
+    description: 'https://github.com/toeverything/blocksuite/issues/2982',
+  });
+  await enterPlaygroundRoom(page);
+  await initEmptyParagraphState(page);
+  await initThreeParagraphs(page);
+  await dragBetweenIndices(page, [0, 1], [2, 1]);
+  await type(page, 'ab');
+  await assertRichTexts(page, ['1ab89']);
+  await undoByKeyboard(page);
+  await assertRichTexts(page, ['123', '456', '789']);
 });

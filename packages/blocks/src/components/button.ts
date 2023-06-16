@@ -31,6 +31,7 @@ export class IconButton extends LitElement {
     }
 
     :host > span {
+      flex: 1;
       white-space: nowrap;
       text-overflow: ellipsis;
       overflow: hidden;
@@ -144,7 +145,7 @@ export class IconButton extends LitElement {
   override render() {
     return html`<slot></slot>${this.text
         ? html`<span>${this.text}</span>`
-        : ''}`;
+        : ''}<slot name="optional"></slot> `;
   }
 }
 

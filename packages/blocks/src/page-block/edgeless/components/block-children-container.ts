@@ -1,20 +1,12 @@
-import {
-  EDGELESS_BLOCK_CHILD_PADDING,
-  FRAME_BACKGROUND_COLORS,
-} from '@blocksuite/global/config';
-import type { SurfaceViewport } from '@blocksuite/phasor';
+import { EDGELESS_BLOCK_CHILD_PADDING } from '@blocksuite/global/config';
 import { deserializeXYWH } from '@blocksuite/phasor';
-import type { BaseBlockModel } from '@blocksuite/store';
 import type { TemplateResult } from 'lit';
 import { html, nothing } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
-import type {
-  BlockHost,
-  FrameBlockModel,
-  TopLevelBlockModel,
-} from '../../../index.js';
+import type { TopLevelBlockModel } from '../../../__internal__/utils/types.js';
+import { DEFAULT_FRAME_COLOR } from '../../../frame-block/frame-model.js';
 
 function EdgelessMask() {
   const style = {
@@ -31,30 +23,29 @@ function EdgelessMask() {
 }
 
 function EdgelessBlockChild(
+  index: number,
   model: TopLevelBlockModel,
-  host: BlockHost,
-  viewport: SurfaceViewport,
   active: boolean,
   renderer: (model: TopLevelBlockModel) => TemplateResult
 ) {
   const { xywh, background } = model;
-  const { zoom, viewportX, viewportY } = viewport;
   const [modelX, modelY, modelW, modelH] = deserializeXYWH(xywh);
-  const translateX = (modelX - viewportX) * zoom;
-  const translateY = (modelY - viewportY) * zoom;
 
   const style = {
     position: 'absolute',
-    transform: `translate(${translateX}px, ${translateY}px) scale(${zoom})`,
-    transformOrigin: '0 0',
+    zIndex: `${index}`,
     width: modelW + 'px',
     height: modelH + 'px',
     padding: `${EDGELESS_BLOCK_CHILD_PADDING}px`,
-    background: `var(${background || FRAME_BACKGROUND_COLORS[0]})`,
-    pointerEvents: 'all',
-    zIndex: '0',
+    border: '2px solid var(--affine-black-10)',
+    borderRadius: '8px',
     boxSizing: 'border-box',
-    borderRadius: '4px',
+    background: `var(${background ?? DEFAULT_FRAME_COLOR})`,
+    boxShadow: 'var(--affine-shadow-3)',
+    pointerEvents: 'all',
+    overflow: 'hidden',
+    transform: `translate(${modelX}px, ${modelY}px)`,
+    transformOrigin: '0 0',
   };
 
   const mask = active ? nothing : EdgelessMask();
@@ -67,24 +58,15 @@ function EdgelessBlockChild(
 }
 
 export function EdgelessBlockChildrenContainer(
-  model: BaseBlockModel,
-  host: BlockHost,
-  viewport: SurfaceViewport,
+  frames: TopLevelBlockModel[],
   active: boolean,
   renderer: (model: TopLevelBlockModel) => TemplateResult
 ) {
   return html`
     ${repeat(
-      model.children.filter(child => child.flavour === 'affine:frame'),
+      frames,
       child => child.id,
-      child =>
-        EdgelessBlockChild(
-          child as FrameBlockModel,
-          host,
-          viewport,
-          active,
-          renderer
-        )
+      (child, index) => EdgelessBlockChild(index, child, active, renderer)
     )}
   `;
 }

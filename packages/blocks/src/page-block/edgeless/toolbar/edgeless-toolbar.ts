@@ -4,19 +4,20 @@ import './brush-tool/brush-tool-button.js';
 import './connector-tool/connector-tool-button.js';
 
 import {
-  FRAME_BACKGROUND_COLORS,
   HandIcon,
   ImageIcon,
   MinusIcon,
+  NoteIcon,
   PlusIcon,
   SelectIcon,
   TextIconLarge,
   ViewBarIcon,
 } from '@blocksuite/global/config';
 import { assertExists } from '@blocksuite/global/utils';
-import { Bound, deserializeXYWH, getCommonBound } from '@blocksuite/phasor';
+import { WithDisposable } from '@blocksuite/lit';
+import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from '@blocksuite/phasor';
 import { css, html, LitElement } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement } from 'lit/decorators.js';
 
 import {
   clamp,
@@ -24,15 +25,15 @@ import {
   Point,
   uploadImageFromLocal,
 } from '../../../__internal__/index.js';
-import type { FrameBlockModel } from '../../../frame-block/index.js';
+import { DEFAULT_FRAME_COLOR } from '../../../frame-block/frame-model.js';
 import { getTooltipWithShortcut } from '../components/utils.js';
 import type { EdgelessPageBlockComponent } from '../edgeless-page-block.js';
-import { stopPropagation, ZOOM_MAX, ZOOM_MIN } from '../utils.js';
+import { stopPropagation } from '../utils.js';
 
-const FIT_TO_SCREEN_PADDING = 200;
+export type ZoomAction = 'fit' | 'out' | 'reset' | 'in';
 
 @customElement('edgeless-toolbar')
-export class EdgelessToolbar extends LitElement {
+export class EdgelessToolbar extends WithDisposable(LitElement) {
   static override styles = css`
     :host {
       position: absolute;
@@ -52,7 +53,7 @@ export class EdgelessToolbar extends LitElement {
       background: var(--affine-background-overlay-panel-color);
       box-shadow: var(--affine-shadow-2);
       border-radius: 8px;
-      fill: var(--affine-icon-color);
+      fill: currentcolor;
     }
 
     .edgeless-toolbar-container[level='second'] {
@@ -93,55 +94,101 @@ export class EdgelessToolbar extends LitElement {
     }
   `;
 
-  @property()
-  mouseMode!: MouseMode;
+  edgeless: EdgelessPageBlockComponent;
 
-  @property()
-  zoom!: number;
-
-  @property()
-  edgeless!: EdgelessPageBlockComponent;
-
-  private _imageLoading = false;
-
-  private _setMouseMode(mouseMode: MouseMode) {
-    this.edgeless?.slots.mouseModeUpdated.emit(mouseMode);
+  constructor(edgeless: EdgelessPageBlockComponent) {
+    super();
+    this.edgeless = edgeless;
   }
 
-  private _setZoom(zoom: number) {
-    const { viewport } = this.edgeless.surface;
-    viewport.setZoom(zoom);
+  get mouseMode() {
+    return this.edgeless.mouseMode;
+  }
+
+  get zoom() {
+    return this.edgeless.surface.viewport.zoom;
+  }
+
+  private _imageLoading = false;
+  private _rafId: number | null = null;
+
+  private _setCenter(x: number, y: number) {
+    this.edgeless.surface.viewport.setCenter(x, y);
+    this.edgeless.slots.viewportUpdated.emit();
+  }
+
+  private _setZoom(zoom: number, focusPoint?: Point) {
+    this.edgeless.surface.viewport.setZoom(zoom, focusPoint);
     this.edgeless.slots.viewportUpdated.emit();
   }
 
   private _setZoomByStep(step: number) {
-    this._setZoom(clamp(this.zoom + step, ZOOM_MIN, ZOOM_MAX));
+    this._smoothZoom(clamp(this.zoom + step, ZOOM_MIN, ZOOM_MAX));
+  }
+
+  private _smoothZoom(zoom: number, focusPoint?: Point) {
+    const delta = zoom - this.zoom;
+
+    const innerSmoothZoom = () => {
+      if (this._rafId) cancelAnimationFrame(this._rafId);
+      this._rafId = requestAnimationFrame(() => {
+        const sign = delta > 0 ? 1 : -1;
+        const total = 10;
+        const step = delta / total;
+        const nextZoom = this._cutoff(this.zoom + step, zoom, sign);
+
+        this._setZoom(nextZoom, focusPoint);
+        if (nextZoom != zoom) innerSmoothZoom();
+      });
+    };
+    innerSmoothZoom();
+  }
+
+  private _cutoff(value: number, ref: number, sign: number) {
+    if (sign > 0 && value > ref) return ref;
+    if (sign < 0 && value < ref) return ref;
+    return value;
   }
 
   private _zoomToFit() {
+    const { centerX, centerY, zoom } = this.edgeless.getFitToScreenData();
     const { viewport } = this.edgeless.surface;
-    const { width, height } = viewport;
-    const frame = this.edgeless.model.children[0] as FrameBlockModel;
-    const frameXYWH = deserializeXYWH(frame.xywh);
-    const frameBound = new Bound(...frameXYWH);
+    const preZoom = this.zoom;
+    const newZoom = zoom;
+    const cofficient = preZoom / newZoom;
+    if (cofficient === 1) {
+      this._smoothTranslate(centerX, centerY);
+    } else {
+      const center = new Point(viewport.centerX, viewport.centerY);
+      const newCenter = new Point(centerX, centerY);
+      const focusPoint = newCenter
+        .subtract(center.scale(cofficient))
+        .scale(1 / (1 - cofficient));
+      this._smoothZoom(zoom, focusPoint);
+    }
+  }
 
-    const surfaceElementsBound = this.edgeless.surface.getElementsBound();
-
-    const bound = surfaceElementsBound
-      ? getCommonBound([frameBound, surfaceElementsBound])
-      : frameBound;
-    assertExists(bound);
-
-    const zoom = Math.min(
-      (width - FIT_TO_SCREEN_PADDING) / bound.w,
-      (height - FIT_TO_SCREEN_PADDING) / bound.h
-    );
-
-    const cx = bound.x + bound.w / 2;
-    const cy = bound.y + bound.h / 2;
-    viewport.setZoom(zoom);
-    viewport.setCenter(cx, cy);
-    this.edgeless.slots.viewportUpdated.emit();
+  private _smoothTranslate(x: number, y: number) {
+    const { viewport } = this.edgeless.surface;
+    const delta = { x: x - viewport.centerX, y: y - viewport.centerY };
+    const innerSmoothTranslate = () => {
+      if (this._rafId) cancelAnimationFrame(this._rafId);
+      this._rafId = requestAnimationFrame(() => {
+        const rate = 10;
+        const step = { x: delta.x / rate, y: delta.y / rate };
+        const nextCenter = {
+          x: viewport.centerX + step.x,
+          y: viewport.centerY + step.y,
+        };
+        const signX = delta.x > 0 ? 1 : -1;
+        const signY = delta.y > 0 ? 1 : -1;
+        nextCenter.x = this._cutoff(nextCenter.x, x, signX);
+        nextCenter.y = this._cutoff(nextCenter.y, y, signY);
+        this._setCenter(nextCenter.x, nextCenter.y);
+        if (nextCenter.x != x || nextCenter.y != y) innerSmoothTranslate();
+      });
+    };
+    innerSmoothTranslate();
   }
 
   private async _addImage() {
@@ -165,12 +212,11 @@ export class EdgelessToolbar extends LitElement {
       const sh = height > 100 ? height - 100 : height;
       const p = options.width / options.height;
       if (s >= 1) {
-        options.height =
-          options.height > sh ? sh : Math.min(options.height, sh);
+        options.height = Math.min(options.height, sh);
         options.width = p * options.height;
       } else {
         const sw = sh * s;
-        options.width = options.width > sw ? sw : Math.min(options.width, sw);
+        options.width = Math.min(options.width, sw);
         options.height = options.width / p;
       }
     }
@@ -190,12 +236,51 @@ export class EdgelessToolbar extends LitElement {
       y = centerY - (options.height * zoom) / 2;
     }
 
-    this.edgeless.addNewFrame(models, new Point(x, y), options);
+    const { frameId } = this.edgeless.addNewFrame(
+      models,
+      new Point(x, y),
+      options
+    );
+    const frame = this.edgeless.frames.find(frame => frame.id === frameId);
+    assertExists(frame);
+
+    this.edgeless.selection.switchToDefaultMode({
+      selected: [frame],
+      active: false,
+    });
+
     this._imageLoading = false;
   }
 
+  setMouseMode = (mouseMode: MouseMode) => {
+    this.edgeless.selection.setMouseMode(mouseMode);
+  };
+
+  setZoomByAction(action: ZoomAction) {
+    switch (action) {
+      case 'fit':
+        this._zoomToFit();
+        break;
+      case 'reset':
+        this._smoothZoom(1.0);
+        break;
+      case 'in':
+      case 'out':
+        this._setZoomByStep(ZOOM_STEP * (action === 'in' ? 1 : -1));
+    }
+  }
+
+  override firstUpdated() {
+    const {
+      _disposables,
+      edgeless: { slots },
+    } = this;
+    _disposables.add(slots.mouseModeUpdated.on(() => this.requestUpdate()));
+    _disposables.add(slots.viewportUpdated.on(() => this.requestUpdate()));
+  }
+
   override render() {
-    const type = this.mouseMode?.type;
+    const { type } = this.mouseMode;
     const formattedZoom = `${Math.round(this.zoom * 100)}%`;
 
     return html`
@@ -209,24 +294,21 @@ export class EdgelessToolbar extends LitElement {
         <edgeless-tool-icon-button
           .tooltip=${getTooltipWithShortcut('Select', 'V')}
           .active=${type === 'default'}
-          @click=${() => this._setMouseMode({ type: 'default' })}
+          @click=${() => this.setMouseMode({ type: 'default' })}
         >
           ${SelectIcon}
         </edgeless-tool-icon-button>
         <edgeless-tool-icon-button
           .tooltip=${getTooltipWithShortcut('Text', 'T')}
           .active=${type === 'text'}
-          @click=${() =>
-            this._setMouseMode({
-              type: 'text',
-              background: FRAME_BACKGROUND_COLORS[0],
-            })}
+          @click=${() => this.setMouseMode({ type: 'text' })}
         >
           ${TextIconLarge}
         </edgeless-tool-icon-button>
         <edgeless-shape-tool-button
           .mouseMode=${this.mouseMode}
           .edgeless=${this.edgeless}
+          .setMouseMode=${this.setMouseMode}
         ></edgeless-shape-tool-button>
         <edgeless-tool-icon-button
           .disabled=${this._imageLoading}
@@ -238,17 +320,30 @@ export class EdgelessToolbar extends LitElement {
         <edgeless-connector-tool-button
           .mouseMode=${this.mouseMode}
           .edgeless=${this.edgeless}
+          .setMouseMode=${this.setMouseMode}
         ></edgeless-connector-tool-button>
         <edgeless-brush-tool-button
           .mouseMode=${this.mouseMode}
           .edgeless=${this.edgeless}
+          .setMouseMode=${this.setMouseMode}
         ></edgeless-brush-tool-button>
         <edgeless-tool-icon-button
           .tooltip=${getTooltipWithShortcut('Hand', 'H')}
           .active=${type === 'pan'}
-          @click=${() => this._setMouseMode({ type: 'pan', panning: false })}
+          @click=${() => this.setMouseMode({ type: 'pan', panning: false })}
         >
           ${HandIcon}
+        </edgeless-tool-icon-button>
+        <edgeless-tool-icon-button
+          .tooltip=${getTooltipWithShortcut('Note', 'N')}
+          .active=${type === 'note'}
+          @click=${() =>
+            this.setMouseMode({
+              type: 'note',
+              background: DEFAULT_FRAME_COLOR,
+            })}
+        >
+          ${NoteIcon}
         </edgeless-tool-icon-button>
         <div class="divider"></div>
         <edgeless-tool-icon-button
@@ -259,16 +354,16 @@ export class EdgelessToolbar extends LitElement {
         </edgeless-tool-icon-button>
         <edgeless-tool-icon-button
           .tooltip=${'Zoom out'}
-          @click=${() => this._setZoomByStep(-0.1)}
+          @click=${() => this._setZoomByStep(-ZOOM_STEP)}
         >
           ${MinusIcon}
         </edgeless-tool-icon-button>
-        <span class="zoom-percent" @click=${() => this._setZoom(1)}>
+        <span class="zoom-percent" @click=${() => this._smoothZoom(1)}>
           ${formattedZoom}
         </span>
         <edgeless-tool-icon-button
           .tooltip=${'Zoom in'}
-          @click=${() => this._setZoomByStep(+0.1)}
+          @click=${() => this._setZoomByStep(ZOOM_STEP)}
         >
           ${PlusIcon}
         </edgeless-tool-icon-button>

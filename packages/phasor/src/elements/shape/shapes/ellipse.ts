@@ -1,7 +1,7 @@
 import type { RoughCanvas } from 'roughjs/bin/canvas.js';
 
 import { type IBound, StrokeStyle } from '../../../consts.js';
-import { Utils } from '../../../utils/tl-utils.js';
+import { pointInEllipse } from '../../../utils/math-utils.js';
 import type { HitTestOptions } from '../../surface-element.js';
 import type { ShapeElement } from '../shape-element.js';
 import type { ShapeMethods } from '../types.js';
@@ -21,6 +21,7 @@ export const EllipseMethods: ShapeMethods = {
       realFillColor,
       realStrokeColor,
       strokeStyle,
+      roughness,
     } = element;
 
     const renderOffset = Math.max(strokeWidth, 0) / 2;
@@ -31,7 +32,7 @@ export const EllipseMethods: ShapeMethods = {
 
     rc.ellipse(renderWidth / 2, renderHeight / 2, renderWidth, renderHeight, {
       seed,
-      roughness: 2,
+      roughness,
       strokeLineDash: strokeStyle === StrokeStyle.Dashed ? [12, 12] : undefined,
       stroke: realStrokeColor,
       strokeWidth,
@@ -40,7 +41,7 @@ export const EllipseMethods: ShapeMethods = {
   },
 
   hitTest(x: number, y: number, bound: IBound, options?: HitTestOptions) {
-    return Utils.pointInEllipse(
+    return pointInEllipse(
       [x, y],
       [bound.x + bound.w / 2, bound.y + bound.h / 2],
       bound.w / 2,

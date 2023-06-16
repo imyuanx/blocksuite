@@ -4,13 +4,24 @@ import { Slot } from '@blocksuite/store';
 import { marked } from 'marked';
 
 import type { PageBlockModel } from '../../models.js';
+import type { EdgelessPageBlockComponent } from '../../page-block/edgeless/edgeless-page-block.js';
 import { getFileFromClipboard } from '../clipboard/utils/pure.js';
-import type { SerializedBlock } from '../utils/index.js';
+import {
+  getEditorContainer,
+  getPageBlock,
+  isPageMode,
+  type SerializedBlock,
+} from '../utils/index.js';
 import { FileExporter } from './file-exporter/file-exporter.js';
+import type {
+  FetchFileHandler,
+  TableParserHandler,
+  TextStyleHandler,
+} from './parse-html.js';
 import { HtmlParser } from './parse-html.js';
 import type { SelectedBlock } from './types.js';
 
-type ParseHtml2BlockFunc = (
+type ParseHtml2BlockHandler = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ...args: any[]
 ) => Promise<SerializedBlock[] | null>;
@@ -20,12 +31,24 @@ export class ContentParser {
   readonly slots = {
     beforeHtml2Block: new Slot<Element>(),
   };
-  private _parsers: Record<string, ParseHtml2BlockFunc> = {};
+  private _parsers: Record<string, ParseHtml2BlockHandler> = {};
   private _htmlParser: HtmlParser;
-
-  constructor(page: Page) {
+  private urlPattern =
+    /(?<=\s|^)https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_+.~#?&/=]*)(?=\s|$)/g;
+  constructor(
+    page: Page,
+    fetchFileHandler?: FetchFileHandler,
+    textStyleHandler?: TextStyleHandler,
+    tableParserHandler?: TableParserHandler
+  ) {
     this._page = page;
-    this._htmlParser = new HtmlParser(this, page);
+    this._htmlParser = new HtmlParser(
+      this,
+      page,
+      fetchFileHandler,
+      textStyleHandler,
+      tableParserHandler
+    );
     this._htmlParser.registerParsers();
   }
 
@@ -50,6 +73,101 @@ export class ContentParser {
     FileExporter.exportHtmlAsMarkdown(
       (root as PageBlockModel).title.toString(),
       htmlContent
+    );
+  }
+
+  public async transPageToCanvas(): Promise<HTMLCanvasElement | undefined> {
+    const root = this._page.root;
+    if (!root) return;
+    const html2canvas = (await import('html2canvas')).default;
+    if (!(html2canvas instanceof Function)) return;
+
+    const editorContainer = getEditorContainer(this._page);
+    if (isPageMode(this._page)) {
+      const styleElement = document.createElement('style');
+      styleElement.textContent =
+        'editor-container,.affine-editor-container {height: auto;}';
+      editorContainer.appendChild(styleElement);
+
+      // todo check render and image
+
+      const data = await html2canvas(editorContainer);
+      editorContainer.removeChild(styleElement);
+      return data;
+    } else {
+      const styleElement = document.createElement('style');
+      const edgeless = getPageBlock(root) as EdgelessPageBlockComponent;
+      const bound = edgeless.getElementsBound();
+      assertExists(bound);
+      const { x, y, w, h } = bound;
+      styleElement.textContent = `
+        edgeless-toolbar {display: none;}
+        editor-container,.affine-editor-container {height: ${
+          h + 100
+        }px; width: ${w + 100}px}
+      `;
+      editorContainer.appendChild(styleElement);
+
+      const width = edgeless.surface.viewport.width;
+      const height = edgeless.surface.viewport.height;
+      edgeless.surface.viewport.setCenter(
+        x + width / 2 - 50,
+        y + height / 2 - 50
+      );
+      edgeless.surface.onResize();
+
+      // todo check render and image
+
+      const promise = new Promise(resolve => {
+        setTimeout(async () => {
+          const canvasData = await html2canvas(editorContainer);
+          resolve(canvasData);
+        }, 0);
+      });
+      const data = (await promise) as HTMLCanvasElement;
+      editorContainer.removeChild(styleElement);
+      return data;
+    }
+  }
+
+  public async exportPng() {
+    const root = this._page.root;
+    if (!root) return;
+    const canvasImage = await this.transPageToCanvas();
+    if (!canvasImage) {
+      return;
+    }
+
+    FileExporter.exportPng(
+      (this._page.root as PageBlockModel).title.toString(),
+      canvasImage.toDataURL('PNG')
+    );
+  }
+
+  public async exportPdf() {
+    const root = this._page.root;
+    if (!root) return;
+    const canvasImage = await this.transPageToCanvas();
+    if (!canvasImage) {
+      return;
+    }
+    const jspdf = await import('jspdf');
+    const pdf = new jspdf.jsPDF(
+      canvasImage.width < canvasImage.height ? 'p' : 'l',
+      'pt',
+      [canvasImage.width, canvasImage.height]
+    );
+    pdf.addImage(
+      canvasImage.toDataURL('PNG'),
+      'PNG',
+      0,
+      0,
+      canvasImage.width,
+      canvasImage.height
+    );
+    FileExporter.exportFile(
+      (root as PageBlockModel).title.toString() + '.pdf',
+      pdf.output('dataurlstring')
     );
   }
 
@@ -164,20 +282,47 @@ export class ContentParser {
     service.json2Block(insertBlockModel, blocks);
   }
 
-  public registerParserHtmlText2Block(name: string, func: ParseHtml2BlockFunc) {
-    this._parsers[name] = func;
+  public async importHtml(text: string, insertPositionId: string) {
+    const blocks = await this.htmlText2Block(text);
+    const insertBlockModel = this._page.getBlockById(insertPositionId);
+
+    assertExists(insertBlockModel);
+    const { getServiceOrRegister } = await import('../service.js');
+    const service = await getServiceOrRegister(insertBlockModel.flavour);
+
+    service.json2Block(insertBlockModel, blocks);
   }
 
-  public getParserHtmlText2Block(name: string): ParseHtml2BlockFunc {
+  public registerParserHtmlText2Block(
+    name: string,
+    handler: ParseHtml2BlockHandler
+  ) {
+    this._parsers[name] = handler;
+  }
+
+  public getParserHtmlText2Block(name: string): ParseHtml2BlockHandler {
     return this._parsers[name] || null;
   }
 
   public text2blocks(text: string): SerializedBlock[] {
     return text.split('\n').map((str: string) => {
+      const splitText = str.split(this.urlPattern);
+      const urls = str.match(this.urlPattern);
+      const result = [];
+
+      for (let i = 0; i < splitText.length; i++) {
+        if (splitText[i]) {
+          result.push({ insert: splitText[i] });
+        }
+        if (urls && urls[i]) {
+          result.push({ insert: urls[i], attributes: { link: urls[i] } });
+        }
+      }
+
       return {
         flavour: 'affine:paragraph',
         type: 'text',
-        text: [{ insert: str }],
+        text: result,
         children: [],
       };
     });

@@ -2,12 +2,13 @@ import '../../components/tool-icon-button.js';
 import './brush-menu.js';
 
 import { PenIcon } from '@blocksuite/global/config';
-import { createPopper } from '@popperjs/core';
+import { assertExists } from '@blocksuite/store';
+import { computePosition, offset } from '@floating-ui/dom';
 import { css, html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
 import type { MouseMode } from '../../../../__internal__/index.js';
-import { DEFAULT_SELECTED_COLOR } from '../../components/color-panel.js';
+import { GET_DEFAULT_LINE_COLOR } from '../../components/color-panel.js';
 import { getTooltipWithShortcut } from '../../components/utils.js';
 import type { EdgelessPageBlockComponent } from '../../edgeless-page-block.js';
 import type { EdgelessBrushMenu } from './brush-menu.js';
@@ -19,24 +20,27 @@ interface BrushMenuPopper {
 
 function createBrushMenuPopper(reference: HTMLElement): BrushMenuPopper {
   const brushMenu = document.createElement('edgeless-brush-menu');
-  document.body.appendChild(brushMenu);
-  const popper = createPopper(reference, brushMenu, {
+  assertExists(reference.shadowRoot);
+  reference.shadowRoot.appendChild(brushMenu);
+
+  computePosition(reference, brushMenu, {
     placement: 'top',
-    modifiers: [
-      {
-        name: 'offset',
-        options: {
-          offset: [0, 12],
-        },
-      },
+    middleware: [
+      offset({
+        mainAxis: 10,
+      }),
     ],
+  }).then(({ x, y }) => {
+    Object.assign(brushMenu.style, {
+      left: `${x}px`,
+      top: `${y}px`,
+    });
   });
 
   return {
     element: brushMenu,
     dispose: () => {
       brushMenu.remove();
-      popper.destroy();
     },
   };
 }
@@ -55,6 +59,9 @@ export class EdgelessBrushToolButton extends LitElement {
   @property()
   edgeless!: EdgelessPageBlockComponent;
 
+  @property()
+  setMouseMode!: (mouseMode: MouseMode) => void;
+
   @state()
   private _popperShow = false;
 
@@ -71,16 +78,6 @@ export class EdgelessBrushToolButton extends LitElement {
       this._brushMenu.element.edgeless = this.edgeless;
       this._popperShow = true;
     }
-  }
-
-  private _trySetBrushMode() {
-    if (this.mouseMode.type === 'brush') return;
-
-    this.edgeless.slots.mouseModeUpdated.emit({
-      type: 'brush',
-      lineWidth: 4,
-      color: DEFAULT_SELECTED_COLOR,
-    });
   }
 
   override updated(changedProperties: Map<string, unknown>) {
@@ -110,7 +107,11 @@ export class EdgelessBrushToolButton extends LitElement {
         .tooltip=${this._popperShow ? '' : getTooltipWithShortcut('Pen', 'P')}
         .active=${type === 'brush'}
         @click=${() => {
-          this._trySetBrushMode();
+          this.setMouseMode({
+            type: 'brush',
+            lineWidth: 4,
+            color: GET_DEFAULT_LINE_COLOR(),
+          });
           this._toggleBrushMenu();
         }}
       >

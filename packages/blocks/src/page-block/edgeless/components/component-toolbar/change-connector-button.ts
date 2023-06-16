@@ -1,7 +1,11 @@
 import '../tool-icon-button.js';
 import '../color-panel.js';
 
-import { ConnectorLIcon, ConnectorXIcon } from '@blocksuite/global/config';
+import {
+  ConnectorLIcon,
+  ConnectorXIcon,
+  LineStyleIcon,
+} from '@blocksuite/global/config';
 import type { ConnectorElement, SurfaceManager } from '@blocksuite/phasor';
 import { StrokeStyle } from '@blocksuite/phasor';
 import { ConnectorMode } from '@blocksuite/phasor';
@@ -19,10 +23,13 @@ import {
   generateConnectorPath,
   getConnectorAttachedInfo,
 } from '../../utils.js';
-import type { ColorEvent, EdgelessColorPanel } from '../color-panel.js';
-import { DEFAULT_SELECTED_COLOR } from '../color-panel.js';
+import {
+  type ColorEvent,
+  type EdgelessColorPanel,
+  GET_DEFAULT_LINE_COLOR,
+} from '../color-panel.js';
 import type { LineSizeButtonProps } from '../line-size-button.js';
-import { LineSizeButton, lineSizeButtonStyles } from '../line-size-button.js';
+import { lineSizeButtonStyles } from '../line-size-button.js';
 import type { LineStyleButtonProps } from '../line-style-button.js';
 import {
   LineStylesPanel,
@@ -37,7 +44,7 @@ function getMostCommonColor(
 ): CssVariableName | null {
   const colors = countBy(elements, (ele: ConnectorElement) => ele.color);
   const max = maxBy(Object.entries(colors), ([k, count]) => count);
-  return max ? (max[0] as CssVariableName) : null;
+  return max ? (max[0] as CssVariableName) : GET_DEFAULT_LINE_COLOR();
 }
 
 function getMostCommonMode(elements: ConnectorElement[]): ConnectorMode | null {
@@ -87,9 +94,8 @@ export class EdgelessChangeConnectorButton extends LitElement {
         flex-direction: row;
         align-items: center;
         justify-content: center;
-        fill: none;
-        stroke: none;
         color: var(--affine-text-primary-color);
+        fill: currentColor;
       }
 
       menu-divider {
@@ -155,9 +161,10 @@ export class EdgelessChangeConnectorButton extends LitElement {
   @property()
   slots!: EdgelessSelectionSlots;
 
+  @query('.connector-color-button')
+  private _colorButton!: EdgelessToolIconButton;
   @query('.color-panel-container')
   private _colorPanel!: EdgelessColorPanel;
-
   private _colorPanelPopper: ReturnType<typeof createButtonPopper> | null =
     null;
 
@@ -231,22 +238,18 @@ export class EdgelessChangeConnectorButton extends LitElement {
   }
 
   private _setShapeStrokeWidth(lineWidth: number) {
-    this.page.transact(() => {
-      this.elements.forEach(ele => {
-        this.surface.updateElement<'connector'>(ele.id, {
-          lineWidth,
-        });
+    this.elements.forEach(ele => {
+      this.surface.updateElement<'connector'>(ele.id, {
+        lineWidth,
       });
     });
     this._forceUpdateSelection();
   }
 
   private _setShapeStrokeStyle(strokeStyle: StrokeStyle) {
-    this.page.transact(() => {
-      this.elements.forEach(ele => {
-        this.surface.updateElement<'connector'>(ele.id, {
-          strokeStyle,
-        });
+    this.elements.forEach(ele => {
+      this.surface.updateElement<'connector'>(ele.id, {
+        strokeStyle,
       });
     });
     this._forceUpdateSelection();
@@ -277,7 +280,10 @@ export class EdgelessChangeConnectorButton extends LitElement {
   override firstUpdated(changedProperties: Map<string, unknown>) {
     const _disposables = this._disposables;
 
-    this._colorPanelPopper = createButtonPopper(this, this._colorPanel);
+    this._colorPanelPopper = createButtonPopper(
+      this._colorButton,
+      this._colorPanel
+    );
     _disposables.add(this._colorPanelPopper);
 
     this._lineStylesPanelPopper = createButtonPopper(
@@ -293,8 +299,7 @@ export class EdgelessChangeConnectorButton extends LitElement {
   }
 
   override render() {
-    const selectedColor =
-      getMostCommonColor(this.elements) ?? DEFAULT_SELECTED_COLOR;
+    const selectedColor = getMostCommonColor(this.elements);
     const style = {
       backgroundColor: `var(${selectedColor})`,
     };
@@ -306,6 +311,7 @@ export class EdgelessChangeConnectorButton extends LitElement {
     return html`
       <edgeless-tool-icon-button
         .tooltip=${'Straight line'}
+        .tipPosition=${'bottom'}
         @click=${() => this._setConnectorMode(ConnectorMode.Straight)}
       >
         <div
@@ -317,6 +323,7 @@ export class EdgelessChangeConnectorButton extends LitElement {
       </edgeless-tool-icon-button>
       <edgeless-tool-icon-button
         .tooltip=${'Connector'}
+        .tipPosition=${'bottom'}
         @click=${() => this._setConnectorMode(ConnectorMode.Orthogonal)}
       >
         <div
@@ -328,11 +335,13 @@ export class EdgelessChangeConnectorButton extends LitElement {
       </edgeless-tool-icon-button>
       <menu-divider .vertical=${true}></menu-divider>
       <edgeless-tool-icon-button
+        class="connector-color-button"
         .tooltip=${'Color'}
+        .tipPosition=${'bottom'}
         .active=${false}
         @click=${() => this._colorPanelPopper?.toggle()}
       >
-        <div class="connector-color-button">
+        <div>
           <div class="color" style=${styleMap(style)}></div>
         </div>
       </edgeless-tool-icon-button>
@@ -344,14 +353,15 @@ export class EdgelessChangeConnectorButton extends LitElement {
         </edgeless-color-panel>
       </div>
 
-      ${LineSizeButton({
-        className: 'line-styles-button',
-        size: selectedLineSize,
-        tooltip: this._popperShow ? '' : 'Line style',
-        onClick: () => {
-          this._lineStylesPanelPopper?.toggle();
-        },
-      })}
+      <edgeless-tool-icon-button
+        class="line-styles-button"
+        .tooltip=${this._popperShow ? '' : 'Border style'}
+        .tipPosition=${'bottom'}
+        .active=${false}
+        @click=${() => this._lineStylesPanelPopper?.toggle()}
+      >
+        ${LineStyleIcon}
+      </edgeless-tool-icon-button>
       ${LineStylesPanel({
         selectedLineSize,
         selectedLineStyle,

@@ -1,6 +1,6 @@
 {
   "name": "@blocksuite/blocks",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Default BlockSuite editable blocks.",
   "main": "src/index.ts",
   "type": "module",
@@ -16,8 +16,8 @@
   "author": "toeverything",
   "license": "MPL-2.0",
   "peerDependencies": {
-    "@blocksuite/store": "workspace:*",
     "@blocksuite/lit": "workspace:*",
+    "@blocksuite/store": "workspace:*",
     "yjs": "^13"
   },
   "dependencies": {
@@ -25,8 +25,11 @@
     "@blocksuite/global": "workspace:*",
     "@blocksuite/phasor": "workspace:*",
     "@blocksuite/virgo": "workspace:*",
-    "@popperjs/core": "^2.11.6",
+    "@floating-ui/dom": "^1.2.9",
     "hotkeys-js": "^3.10.1",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.1",
+    "jszip": "^3.10.1",
     "lit": "^2.7.3",
     "marked": "^4.2.12",
     "shiki": "^0.14.1",

@@ -1,7 +1,9 @@
-export const MAX_ZOOM = 3.0;
-export const MIN_ZOOM = 0.1;
-export const ZOOM_STEP = 0.1;
+export const ZOOM_MAX = 6.0;
+export const ZOOM_MIN = 0.1;
+export const ZOOM_STEP = 0.25;
 export const GRID_SIZE = 3000;
+
+export const DEFAULT_ROUGHNESS = 2;
 
 export interface IBound {
   x: number;

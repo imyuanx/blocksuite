@@ -1,6 +1,7 @@
 import { assertExists } from '@blocksuite/global/utils';
+import type { PointerEventState } from '@blocksuite/lit';
 
-import type { IPoint, SelectionEvent } from '../../../__internal__/index.js';
+import type { IPoint } from '../../../__internal__/index.js';
 import type { DefaultSelectionSlots } from '../../../index.js';
 import { getModelByElement } from '../../../index.js';
 import type { PageSelectionState } from './selection-state.js';
@@ -22,7 +23,7 @@ export class EmbedResizeManager {
     this.slots = slots;
   }
 
-  onStart(e: SelectionEvent) {
+  onStart(e: PointerEventState) {
     this._originPosition.x = e.raw.pageX;
     this._originPosition.y = e.raw.pageY;
     this._dropContainer = (e.raw.target as HTMLElement).closest('.resizes');
@@ -37,9 +38,9 @@ export class EmbedResizeManager {
     }
   }
 
-  onMove(e: SelectionEvent) {
+  onMove(e: PointerEventState) {
     const activeComponent =
-      this.state.activeComponent || this.state.selectedEmbeds[0];
+      this.state.activeComponent || this.state.selectedEmbed;
     if (!activeComponent) return;
 
     let width = 0;

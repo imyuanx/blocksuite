@@ -1,23 +1,24 @@
 /* eslint-disable @typescript-eslint/no-restricted-imports */
-import '@shoelace-style/shoelace/dist/themes/light.css';
-import '@shoelace-style/shoelace/dist/themes/dark.css';
-import '@shoelace-style/shoelace/dist/components/button/button.js';
-import '@shoelace-style/shoelace/dist/components/tooltip/tooltip.js';
-import '@shoelace-style/shoelace/dist/components/icon/icon.js';
 import '@shoelace-style/shoelace/dist/components/button-group/button-group.js';
-import '@shoelace-style/shoelace/dist/components/dropdown/dropdown.js';
-import '@shoelace-style/shoelace/dist/components/divider/divider.js';
-import '@shoelace-style/shoelace/dist/components/menu/menu.js';
-import '@shoelace-style/shoelace/dist/components/menu-item/menu-item.js';
-import '@shoelace-style/shoelace/dist/components/icon-button/icon-button.js';
-import '@shoelace-style/shoelace/dist/components/select/select.js';
+import '@shoelace-style/shoelace/dist/components/button/button.js';
 import '@shoelace-style/shoelace/dist/components/color-picker/color-picker.js';
+import '@shoelace-style/shoelace/dist/components/divider/divider.js';
+import '@shoelace-style/shoelace/dist/components/dropdown/dropdown.js';
+import '@shoelace-style/shoelace/dist/components/icon-button/icon-button.js';
+import '@shoelace-style/shoelace/dist/components/icon/icon.js';
+import '@shoelace-style/shoelace/dist/components/menu-item/menu-item.js';
+import '@shoelace-style/shoelace/dist/components/menu/menu.js';
+import '@shoelace-style/shoelace/dist/components/select/select.js';
 import '@shoelace-style/shoelace/dist/components/tab-group/tab-group.js';
 import '@shoelace-style/shoelace/dist/components/tab/tab.js';
+import '@shoelace-style/shoelace/dist/components/tooltip/tooltip.js';
+import '@shoelace-style/shoelace/dist/themes/light.css';
+import '@shoelace-style/shoelace/dist/themes/dark.css';
 
 import {
   activeEditorManager,
   COLOR_VARIABLES,
+  createPage,
   extractCssVariables,
   FONT_FAMILY_VARIABLES,
   getCurrentBlockRange,
@@ -28,6 +29,7 @@ import {
 } from '@blocksuite/blocks';
 import type { ContentParser } from '@blocksuite/blocks/content-parser';
 import { EditorContainer } from '@blocksuite/editor';
+import { EDITOR_WIDTH } from '@blocksuite/global/config';
 import { assertExists } from '@blocksuite/global/utils';
 import { ShadowlessElement } from '@blocksuite/lit';
 import { Utils, type Workspace } from '@blocksuite/store';
@@ -37,6 +39,7 @@ import { GUI } from 'dat.gui';
 import { css, html } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 
+import { registerFormatBarCustomElement } from './custom-format-bar';
 import { createViewer } from './doc-inspector';
 
 const cssVariablesMap = extractCssVariables(document.documentElement);
@@ -190,14 +193,16 @@ export class DebugMenu extends ShadowlessElement {
   private _toggleConnection() {
     if (this._connected) {
       this.workspace.providers.forEach(provider => {
-        if (!provider || !provider.disconnect) return;
-        provider.disconnect();
+        if ('passive' in provider && provider.connected) {
+          provider.disconnect();
+        }
       });
       this._connected = false;
     } else {
       this.workspace.providers.forEach(provider => {
-        if (!provider || !provider.connect) return;
-        provider.connect();
+        if ('passive' in provider && !provider.connected) {
+          provider.connect();
+        }
       });
       this._connected = true;
     }
@@ -261,10 +266,14 @@ export class DebugMenu extends ShadowlessElement {
     this.page.captureSync();
 
     const count = root.children.length;
-    const xywh = `[0,${count * 60},720,480]`;
+    const xywh = `[0,${count * 60},${EDITOR_WIDTH},480]`;
 
     const frameId = this.page.addBlock('affine:frame', { xywh }, pageId);
     this.page.addBlock('affine:paragraph', {}, frameId);
+  }
+
+  private _exportPdf() {
+    this.contentParser.exportPdf();
   }
 
   private _exportHtml() {
@@ -273,6 +282,10 @@ export class DebugMenu extends ShadowlessElement {
 
   private _exportMarkDown() {
     this.contentParser.exportMarkdown();
+  }
+
+  private _exportPng() {
+    this.contentParser.exportPng();
   }
 
   private _exportYDoc() {
@@ -305,14 +318,35 @@ export class DebugMenu extends ShadowlessElement {
 
     this._dark = dark;
     localStorage.setItem('blocksuite:dark', dark ? 'true' : 'false');
-    html?.setAttribute('data-theme', dark ? 'dark' : 'light');
+    if (!html) return;
+    html.setAttribute('data-theme', dark ? 'dark' : 'light');
+
+    this._insertTransitionStyle('color-transition', 0);
+
     if (dark) {
-      html?.classList.add('dark');
-      html?.classList.add('sl-theme-dark');
+      html.classList.add('dark');
+      html.classList.add('sl-theme-dark');
     } else {
-      html?.classList.remove('dark');
-      html?.classList.remove('sl-theme-dark');
+      html.classList.remove('dark');
+      html.classList.remove('sl-theme-dark');
     }
+  }
+
+  private _insertTransitionStyle(classKey: string, duration: number) {
+    const $html = document.documentElement;
+    const $style = document.createElement('style');
+    const slCSSKeys = ['sl-transition-x-fast'];
+    $style.innerHTML = `html.${classKey} * { transition: all ${duration}ms 0ms linear !important; } :root { ${slCSSKeys.map(
+      key => `--${key}: ${duration}ms`
+    )} }`;
+
+    $html.appendChild($style);
+    $html.classList.add(classKey);
+
+    setTimeout(() => {
+      $style.remove();
+      $html.classList.remove(classKey);
+    }, duration);
   }
 
   private _toggleDarkMode() {
@@ -323,8 +357,12 @@ export class DebugMenu extends ShadowlessElement {
     this._setThemeMode(!!e.matches);
   };
 
+  private _registerFormatBarCustomElements() {
+    registerFormatBarCustomElement();
+  }
+
   override firstUpdated() {
-    this.workspace.slots.pageAdded.on(e => {
+    this.workspace.slots.pageAdded.on(() => {
       this._showTabMenu = this.workspace.meta.pageMetas.length > 1;
     });
     this.workspace.slots.pageRemoved.on(() => {
@@ -381,6 +419,12 @@ export class DebugMenu extends ShadowlessElement {
           overflow: auto;
           z-index: 1000; /* for debug visibility */
           pointer-events: none;
+        }
+
+        @media print {
+          .debug-menu {
+            display: none;
+          }
         }
 
         .default-toolbar {
@@ -544,6 +588,12 @@ export class DebugMenu extends ShadowlessElement {
               <sl-menu-item @click=${this._exportHtml}>
                 Export HTML
               </sl-menu-item>
+              <sl-menu-item @click=${this._exportPdf}>
+                Export PDF
+              </sl-menu-item>
+              <sl-menu-item @click=${this._exportPng}>
+                Export PNG
+              </sl-menu-item>
               <sl-menu-item @click=${this._exportYDoc}>
                 Export YDoc
               </sl-menu-item>
@@ -557,6 +607,20 @@ export class DebugMenu extends ShadowlessElement {
               <sl-menu-item @click=${this._inspect}> Inspect Doc</sl-menu-item>
             </sl-menu>
           </sl-dropdown>
+
+          <sl-tooltip
+            content="Register FormatBar Custom Elements"
+            placement="bottom"
+            hoist
+          >
+            <sl-button
+              size="small"
+              content="Register FormatBar Custom Elements"
+              @click=${this._registerFormatBarCustomElements}
+            >
+              <sl-icon name="plug"></sl-icon>
+            </sl-button>
+          </sl-tooltip>
 
           <sl-tooltip content="Switch Editor Mode" placement="bottom" hoist>
             <sl-button
@@ -590,7 +654,7 @@ export class DebugMenu extends ShadowlessElement {
             <sl-button
               size="small"
               content="Add New Page"
-              @click=${() => createPage(this.workspace)}
+              @click=${() => createPageBlock(this.workspace)}
             >
               <sl-icon name="file-earmark-plus"></sl-icon>
             </sl-button>
@@ -609,9 +673,9 @@ export class DebugMenu extends ShadowlessElement {
   }
 }
 
-function createPage(workspace: Workspace) {
+function createPageBlock(workspace: Workspace) {
   const id = workspace.idGenerator();
-  workspace.createPage({ id, init: true });
+  createPage(workspace, { id });
 }
 
 function getTabGroupTemplate({
@@ -665,19 +729,6 @@ function getTabGroupTemplate({
         >
           <div>
             <div>${page.title || 'Untitled'}</div>
-            <!-- TODO deprecated subpage -->
-            <div>
-              ${page.subpageIds
-                .map(
-                  pageId =>
-                    (
-                      pageList.find(meta => meta.id === pageId) ?? {
-                        title: 'Page Not Found',
-                      }
-                    ).title || 'Untitled'
-                )
-                .join(',')}
-            </div>
           </div>
         </sl-tab>`
     )}

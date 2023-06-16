@@ -48,11 +48,12 @@ const columnTypes: ColumnHeader[] = [
 
 const styles = css`
   :host {
+    position: absolute;
     z-index: 1;
     width: 200px;
     padding: 8px;
     border: 1px solid var(--affine-border-color);
-    border-radius: 4px;
+    border-radius: 8px;
     background: var(--affine-background-primary-color);
     box-shadow: var(--affine-menu-shadow);
     font-family: var(--affine-font-family);
@@ -81,10 +82,9 @@ const styles = css`
   }
   .selected svg {
     color: var(--affine-text-emphasis-color);
-  }
-  .selected.rich-text svg {
     fill: var(--affine-text-emphasis-color);
   }
+
   /* .action.disabled {
     cursor: not-allowed;
   }
